@@ -28,18 +28,7 @@ public class ItemController {
     @Autowired
     ItemService itemService;
 
-//    @Autowired
-//    FileStorageService fileStorageService;
-
     private List<Item> items = new ArrayList<>();
-
- //constructor
-
-//    public ItemController(ItemService itemService) {
-//        super();
-//        this.itemService = itemService;
-//    }
-
 
     //build create item rest api
     @PostMapping("")
@@ -48,27 +37,17 @@ public class ItemController {
                                          @RequestParam boolean isSeed,
                                          @RequestParam MultipartFile toPicture) {
         try {
-            itemService.uploadFile(toPicture);
-
             Item item = new Item();
             item.setName(name);
             item.setDescription(description);
             item.setSeed(isSeed);
-
-            item.setToPicture(toPicture.getOriginalFilename());
-
-            itemService.createItem(item);
-
-            return ResponseEntity.noContent().build();
+            itemService.uploadPicture(itemService.createItem(item),toPicture);
+            return ResponseEntity.ok("Item created");
         } catch (Exception exception) {
-            return new ResponseEntity<>(HttpStatus.I_AM_A_TEAPOT);
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
     }
-//    @PostMapping("")
-//    public ResponseEntity<Object> createItem(@RequestBody Item item){
-//        itemService.createItem(item);
-//        return ResponseEntity.ok("Added");
-//    }
+
     @GetMapping
     public ResponseEntity<Object> getItems() { return ResponseEntity.ok().body(itemService.getAllItems()); }
     public List<Item> fetchItems(@RequestParam(name="name", defaultValue="") String name,
@@ -91,6 +70,7 @@ public class ItemController {
         itemService.partialUpdateItem(id, fields);
         return ResponseEntity.noContent().build();
     }
+
     @GetMapping("{id}/toPicture")
     public ResponseEntity downloadFile(@PathVariable long id) {
         Resource resource = itemService.downloadFile(id);

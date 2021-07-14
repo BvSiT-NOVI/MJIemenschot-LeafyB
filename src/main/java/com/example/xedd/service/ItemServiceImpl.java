@@ -1,11 +1,9 @@
 package com.example.xedd.service;
 
-import com.example.xedd.exception.FileStorageException;
-import com.example.xedd.exception.NotFoundException;
-import com.example.xedd.exception.RecordNotFoundException;
+import com.example.xedd.exception.*;
 import com.example.xedd.model.Item;
+import com.example.xedd.payload.PictureDtoRequest;
 import com.example.xedd.repository.ItemRepository;
-import com.example.xedd.exception.ResourceNotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
@@ -29,84 +27,52 @@ import java.util.Optional;
 
 @Service
 public class ItemServiceImpl implements ItemService {
+    @Value("${app.upload.dir:${user.home}}")
+    private String uploadDirectory;  // relative to root
+    private final Path uploads = Paths.get("uploads");
 
-
-    Path uploads = Paths.get(".\\uploads");
-    private Long id;
-
-    private ItemRepository repository;
-
-
-    @Autowired ItemServiceImpl(ItemRepository itemRepository) {
-        this.repository = itemRepository;
-    }
+    @Autowired
+    private ItemRepository itemRepository;
 
     @Override
     public List<Item> getAllItems() {
-        return repository.findAll();
+        return itemRepository.findAll();
     }
     @Override
     public long createItem(Item item) {
-        Item newItem = repository.save(item);
+        Item newItem = itemRepository.save(item);
         return newItem.getId();
     }
-    //Uit FilestorageserviceImpl
-    @Value("${app.upload.dir:${user.home}}")
-    private String uploadDirectory;  // relative to root
-    private final Path uploads = Paths.get(".\\uploads");
-
-    @Override
-    public void uploadFile(MultipartFile toPicture) {
-        try {
-            Path copyLocation = Paths.get(uploads + File.separator + StringUtils.cleanPath(toPicture.getOriginalFilename()));
-            Files.copy(toPicture.getInputStream(), copyLocation, StandardCopyOption.REPLACE_EXISTING);
-            Item item = new Item();
-            item.setDescription(toPicture.getName());
-        } catch (Exception e) {
-            e.printStackTrace();
-            throw new FileStorageException("Could not store file " + toPicture.getOriginalFilename() + ". Please try again.");
-        }
-    }
-
-//    @Override
-//    public void deleteFile(String filename) throws IOException {
-//        Path deleteLocation = Paths.get(uploads + File.separator + StringUtils.cleanPath(filename));
-//        Files.delete(deleteLocation);
-//    }
 
     public Collection<Item> getItems(String name) {
         if (name.isEmpty()) {
-            return repository.findAll();
+            return itemRepository.findAll();
         }
         else {
-            return repository.findAllByName(name);
+            return itemRepository.findAllByName(name);
         }
     }
-//    @Override
-//    public Item getItem(Long id) {
-//        return repository.getItemById(id);
-//    }
+
     @Override
     public Optional<Item> getItemById(long id) {
-       if (!repository.existsById(id)) throw new RecordNotFoundException();
-        return repository.findById(id);
+       if (!itemRepository.existsById(id)) throw new RecordNotFoundException();
+        return itemRepository.findById(id);
     }
+
     @Override
     public void updateItem(long id, Item item) {
-        if (!repository.existsById(id)) throw new RecordNotFoundException();
-        Item existingItem = repository.findById(id).get();
+        if (!itemRepository.existsById(id)) throw new RecordNotFoundException();
+        Item existingItem = itemRepository.findById(id).get();
         existingItem.setName(item.getName());
         existingItem.setDescription(item.getDescription());
-        existingItem.setToPicture(item.getToPicture());
-
-        repository.save(existingItem);
-
+        //existingItem.setToPicture(item.getToPicture());
+        itemRepository.save(existingItem);
     }
 
     @Override
     public void partialUpdateItem(long id, Map<String, String> fields) {
-        if (!repository.existsById(id)) throw new RecordNotFoundException();
-        Item item = repository.findById(id).get();
+        if (!itemRepository.existsById(id)) throw new RecordNotFoundException();
+        Item item = itemRepository.findById(id).get();
         for (String field : fields.keySet()) {
             switch (field.toLowerCase()) {
                 case "name":
@@ -115,78 +81,79 @@ public class ItemServiceImpl implements ItemService {
                 case "description":
                     item.setDescription((String) fields.get(field));
                     break;
-                case "toPicture":
-                    item.setToPicture((String) fields.get(field));
+                //case "toPicture":
+                //    item.setToPicture((String) fields.get(field));
 
             }
         }
-        repository.save(item);
-
+        itemRepository.save(item);
     }
+
     @Override
     public void deleteItem(long id) {
-        if (!repository.existsById(id)) throw new RecordNotFoundException();
-        repository.deleteById(id);
+        if (!itemRepository.existsById(id)) throw new RecordNotFoundException();
+        //TODO also remove picture
+        itemRepository.deleteById(id);
     }
 
-    public Resource downloadFile(Long id) {
-        Optional<Item> stored = repository.findById(id);
+    @Override
+    public boolean itemExistsById(long id) {
+        return  itemRepository.existsById(id);
+    }
 
-        if (stored.isPresent()) {
-            String fileName = stored.get().getToPicture();
-            Path path = this.uploads.resolve(fileName);
+    @Override
+    public long uploadPicture(PictureDtoRequest pictureDtoRequest){
+        return  uploadPicture(pictureDtoRequest.getItemId(), pictureDtoRequest.getPicture());
+    }
 
-            Resource resource = null;
+    @Override
+    public long uploadPicture(long itemId,MultipartFile file){
+        if (!itemRepository.existsById(itemId)) throw new RecordNotFoundException();
+        Item item = itemRepository.findById(itemId).get();
+        String originalFilename = StringUtils.cleanPath(file.getOriginalFilename());
+        Path copyLocation = this.uploads.resolve(file.getOriginalFilename());
+        try {
+            Files.copy(file.getInputStream(), copyLocation, StandardCopyOption.REPLACE_EXISTING);
+        } catch (Exception e) {
+            throw new FileStorageException("Could not store file " + originalFilename + ". Please try again!");
+        }
+        item.setToPicture(copyLocation.toString());
+        Item saved = itemRepository.save(item);
+        return saved.getId();
+    }
 
-            try {
-                resource = new UrlResource(path.toUri());
-                return resource;
-            } catch (MalformedURLException e) {
-                e.printStackTrace();
-            }
-        } else {
-            throw new NotFoundException();
+    @Override
+    public Resource downloadPicture(long itemId) {
+        if (!itemRepository.existsById(itemId)) throw new RecordNotFoundException();
+        Item item = itemRepository.findById(itemId).get();
+        String location = item.getToPicture();
+        Path path = this.uploads.resolve(location);
+
+        Resource resource = null;
+        try {
+            resource = new UrlResource(path .toUri());
+            return resource;
+        } catch (MalformedURLException e) {
+            e.printStackTrace();
         }
         return null;
     }
-//    @Override
-//    public Collection<Item> getItems(String name, String description) {
-//        return itemRepository.findAll();
-//    }
-//    public Collection<Item> getItems(String name, String description) {
-//        if (!name.isEmpty()) {
-//            if (!name.isEmpty()) {
-//                return itemRepository.findAllByNameAndDescription(name, description);
-//            }
-//            else {
-//                return itemRepository.findAllByName(name);
-//            }
-//        }
-//        else {
-//            if (!description.isEmpty()) {
-//                return itemRepository.findAllByDescription(description);
-//            }
-//            else {
-//                return itemRepository.findAll();
-//            }
-//        }
 
-//
     @Override
-    public boolean itemExistsById(long id) {
-        return  repository.existsById(id);
+    public void deletePicture(long itemId) {
+        if (!itemRepository.existsById(itemId)) throw new RecordNotFoundException();
+        Item item = itemRepository.findById(itemId).get();
+        String location = item.getToPicture();
+        Path path = this.uploads.resolve(location);
+        try {
+            Files.deleteIfExists(path);
+            item.setToPicture(null);
+            itemRepository.save(item);
+        }
+        catch (IOException ex) {
+            throw new RuntimeException("File not found");
+        }        
     }
-
-//    @Override
-//    public List<Object> getAllSeeds() {
-//        List<Item> itemList = repository.findAllSeeds();
-//        List<Object> seeds = new ArrayList<>();
-//        for (int i = 0; i < itemList.size(); i++) {
-//            if (itemList.get(i).isSeed()) seeds.add(itemList.get(i));
-//        }
-//        return seeds;
-//    }
-
 
 }
 
