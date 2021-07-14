@@ -73,6 +73,19 @@ public class ItemController {
 
     @GetMapping("{id}/toPicture")
     public ResponseEntity downloadFile(@PathVariable long id) {
+        Resource resource = itemService.downloadPicture(id);
+        //String filename = itemService.getItemById(id).getToPicture();
+        String mediaType = "application/octet-stream";
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(mediaType))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + resource.getFilename() + "\"")
+                .body(resource);
+    }
+
+/*
+
+    @GetMapping("{id}/toPicture")
+    public ResponseEntity downloadFile(@PathVariable long id) {
         Resource resource = itemService.downloadFile(id);
         //String filename = itemService.getItemById(id).getToPicture();
         String mediaType = "application/octet-stream";
@@ -81,6 +94,8 @@ public class ItemController {
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + resource.getFilename() + "\"")
                 .body(resource);
     }
+*/
+
 //    @PostMapping(value = "/files",
 ////            consumes = {MediaType.MULTIPART_FORM_DATA_VALUE},
 //            produces = {MediaType.APPLICATION_JSON_VALUE} )
